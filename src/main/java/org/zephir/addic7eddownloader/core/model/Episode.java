@@ -1,6 +1,11 @@
 package org.zephir.addic7eddownloader.core.model;
 
 import java.io.File;
+import java.util.AbstractMap.SimpleEntry;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class Episode {
     private File file;
@@ -8,6 +13,7 @@ public class Episode {
     private String releaseName;
     private int seasonNb;
     private int episodeNb;
+    private Map<Locale, SimpleEntry<String, String>> srtMap = new HashMap<>();
 
     public Episode(File file) {
         this.file = file;
@@ -20,6 +26,16 @@ public class Episode {
         this.releaseName = releaseName;
         this.seasonNb = seasonNb;
         this.episodeNb = episodeNb;
+    }
+
+    public void addSrtFile(Locale lang, String url, String filename) {
+        srtMap.put(lang, new SimpleEntry<String, String>(url, filename));
+    }
+
+    public String getSrtFilesToString() {
+        return srtMap.entrySet().stream().map(entry -> {
+            return "\t" + entry.getKey().toLanguageTag() + ": " + entry.getValue().getKey() + " -> '" + entry.getValue().getValue() + "'";
+        }).collect(Collectors.joining("\n"));
     }
 
     @Override

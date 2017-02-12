@@ -4,7 +4,7 @@
 
 	<groupId>org.zephir.addic7eddownloader</groupId>
 	<artifactId>Addic7edDownloader</artifactId>
-	<version>1.0.0</version>
+	<version>1.1.0</version>
 	<packaging>jar</packaging>
 	<name>Addic7edDownloader</name>
 	<description>Addic7edDownloaders</description>

@@ -87,7 +87,7 @@ public class Addic7edDownloaderForm implements Addic7edDownloaderConstants {
 
     private void createSShell() {
         sShell = new Shell((Display) SWTLoader.getDisplay(), SWT.CLOSE | SWT.TITLE | SWT.MIN | SWT.MAX);
-        sShell.setText("PhotoRenamer by wInd v" + VERSION);
+        sShell.setText(APPLICATION_NAME + " by wInd v" + VERSION);
         sShell.setImage(new Image(Display.getCurrent(), getClass().getResourceAsStream("/skull2-16x16.gif")));
         sShell.setLayout(null);
         sShell.addShellListener(new org.eclipse.swt.events.ShellAdapter() {
@@ -129,7 +129,7 @@ public class Addic7edDownloaderForm implements Addic7edDownloaderConstants {
 
         checkboxFrenchLang = new Button(sShell, SWT.CHECK);
         checkboxFrenchLang.setText("French");
-        checkboxFrenchLang.setSelection(true);
+        checkboxFrenchLang.setSelection(false);
         checkboxFrenchLang.setBounds(new Rectangle(checkboxEnglishLang.getBounds().x + checkboxEnglishLang.getBounds().width + FORM_LINE_SPACE / 2, y, 100, FORM_LINE_HEIGHT));
 
         buttonProceed = new Button(sShell, SWT.NONE);

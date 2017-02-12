@@ -1,0 +1,6 @@
+1.1.0
+ - don't overwrite srt if already there
+ - add log to know the origin (page and file name before)
+ - don't overwrite logs
+ - manage release=KILLER and release on site=KILLER.PROPER
+ - French not checked by default

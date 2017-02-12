@@ -1,14 +1,19 @@
 package org.zephir.addic7eddownloader.core;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLConnection;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +33,7 @@ import org.jsoup.nodes.TextNode;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.zephir.addic7eddownloader.core.model.DownloadedResource;
 import org.zephir.addic7eddownloader.core.model.Episode;
 import org.zephir.util.exception.CustomException;
 
@@ -72,7 +78,12 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
                 downloadEpisodeSubtitleUrlPool.submit(() -> {
                     try {
                         for (Locale lang : langList) {
-                            downloadEpisodeSubtitleUrl(episode, lang);
+                            File srtFile = getSubtitleFile(episode, lang);
+                            if (srtFile.exists()) {
+                                log.info("Subtitle file already exists, skipping: " + srtFile.getName());
+                            } else {
+                                downloadEpisodeSubtitleUrl(episode, lang);
+                            }
                         }
                     } catch (CustomException e) {
                         if (TRACE) {
@@ -92,6 +103,10 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
             downloadSubtitlePool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
             log.info("All downloads finished");
 
+            log.info("Generating log file");
+            writeLogFile(episodeList);
+            log.info("Log file generated");
+
         } catch (CustomException e) {
             throw e;
         } catch (Throwable e) {
@@ -100,22 +115,40 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
         }
     }
 
+    private void writeLogFile(List<Episode> episodeList) throws IOException {
+        File logFile = new File(folderToProcess, "addic7edDownloader.log");
+        String logContent = "";
+        if (logFile.exists()) {
+            logContent = FileUtils.readFileToString(logFile, "UTF-8") + "\n\n";
+        }
+        String currentdDate = new SimpleDateFormat("yyyy_MM.dd HH:mm:ss").format(new Date());
+        String dateSeparator = StringUtils.repeat("-", currentdDate.length());
+        logContent += dateSeparator + "\n" + currentdDate + "\n" + dateSeparator + "\n";
+        logContent += episodeList.stream().map(episode -> {
+            String epSrtstr = episode.getSrtFilesToString();
+            return StringUtils.isNotBlank(epSrtstr) ? episode.getFile().getName() + "\n" + epSrtstr : "";
+        }).collect(Collectors.joining("\n"));
+        FileUtils.write(logFile, logContent, "UTF-8");
+    }
+
+    private static File getSubtitleFile(Episode episode, Locale lang) {
+        String destinationFilename = FilenameUtils.getBaseName(episode.getFile().getName()) + "-" + lang.toLanguageTag() + ".srt";
+        return new File(episode.getFile().getParentFile(), destinationFilename);
+    }
+
     private static void downloadSubtitle(Episode episode, String subtitleUrl, Locale lang, String refererUrl) {
         try {
-            String destinationFilename = FilenameUtils.getBaseName(episode.getFile().getName()) + "-" + lang.toLanguageTag() + ".srt";
-            File destinationFile = new File(episode.getFile().getParentFile(), destinationFilename);
+            File destinationFile = getSubtitleFile(episode, lang);
             log.info("Downloading: '" + subtitleUrl + "' -> '" + destinationFile.getName() + "'");
 
-            URLConnection connection = new URL(subtitleUrl).openConnection();
-            connection.setRequestProperty("Referer", refererUrl);
-            connection.connect();
-            byte[] srtContent = IOUtils.toByteArray(connection);
-            String srtStartStr = new String(srtContent, 0, 100, "UTF-8");
+            DownloadedResource srtResource = downloadResource(subtitleUrl, refererUrl);
+            String srtStartStr = new String(srtResource.getContentAsByteArray(), 0, 100, "UTF-8");
             if (srtStartStr.contains("DOCTYPE")) {
                 throw new Exception("Bad srt file starting with: " + srtStartStr);
             }
-            FileUtils.writeByteArrayToFile(destinationFile, srtContent);
-            log.info("Download OK: '" + subtitleUrl + "' -> '" + destinationFile.getName() + "'");
+            FileUtils.writeByteArrayToFile(destinationFile, srtResource.getContentAsByteArray());
+            episode.addSrtFile(lang, refererUrl, srtResource.getFilename());
+            log.info("Download OK: '" + subtitleUrl + "': '" + srtResource.getFilename() + "' -> '" + destinationFile.getName() + "'");
 
         } catch (Exception e) {
             log.error("downloadSubtitle(episode='" + episode + "', url='" + subtitleUrl + "') KO: " + e, e);
@@ -130,33 +163,69 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
         }
     };
 
+    private static String getAddic7edUrlForEpisode(Episode episode, Locale lang) throws Exception {
+        // build url
+        // http://www.addic7ed.com/serie/Preacher/1/1/1
+        // http://www.addic7ed.com/serie/{ShowName}/{SeasonNb}/{EpisodeNb}/{LanguageNb}
+        String addict7edShowName = getAddict7edShowName(episode.getShowName());
+        if (!LANG_MAP.containsKey(lang)) {
+            throw new Exception("getEpisodeSubtitle(episode='" + episode + "') KO: language '" + lang.getDisplayName() + "' not found");
+        }
+        String languageNb = LANG_MAP.get(lang);
+        String urlSuffix = addict7edShowName.replaceAll(" ", "_") + "/" + episode.getSeasonNb() + "/" + episode.getEpisodeNb() + "/" + languageNb;
+        String episodeSubtitlesUrlString = ADDIC7ED_URL + "serie/" + urlSuffix;
+        return episodeSubtitlesUrlString;
+    }
+
+    public static DownloadedResource downloadResource(String url, String refererUrl) throws Exception {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            if (StringUtils.isNotEmpty(refererUrl)) {
+                connection.setRequestProperty("Referer", refererUrl);
+            }
+            connection.connect();
+            int responseCode = connection.getResponseCode();
+            if (responseCode == 200) {
+                byte[] pageSource = IOUtils.toByteArray(connection);
+                DownloadedResource resource = new DownloadedResource(pageSource);
+                String contentDisposition = connection.getHeaderField("Content-Disposition");
+                if (StringUtils.isNotBlank(contentDisposition)) {
+                    String filename = StringUtils.substringBetween(contentDisposition, "filename=\"", "\"");
+                    resource.setFilename(filename);
+                }
+                resource.setEncoding(connection.getContentEncoding());
+                return resource;
+            } else if (responseCode == 404) {
+                throw new FileNotFoundException(url);
+            } else {
+                throw new CustomException("Url '" + url + "' unreachable, check network (status='" + responseCode + "')");
+            }
+
+        } catch (CustomException | FileNotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("downloadUrlToByteArray(url='" + url + "', referer='" + refererUrl + "') KO: " + e, e);
+            throw e;
+        }
+    }
+
     public void downloadEpisodeSubtitleUrl(Episode episode, Locale lang) throws Exception {
         try {
-            // build url
-            // http://www.addic7ed.com/serie/Preacher/1/1/1
-            // http://www.addic7ed.com/serie/{ShowName}/{SeasonNb}/{EpisodeNb}/{LanguageNb}
-            String addict7edShowName = getAddict7edShowName(episode.getShowName());
-            if (!LANG_MAP.containsKey(lang)) {
-                throw new Exception("getEpisodeSubtitle(episode='" + episode + "') KO: language '" + lang.getDisplayName() + "' not found");
-            }
-            String languageNb = LANG_MAP.get(lang);
-            String urlSuffix = addict7edShowName.replaceAll(" ", "_") + "/" + episode.getSeasonNb() + "/" + episode.getEpisodeNb() + "/" + languageNb;
-            String episodeSubtitlesUrlString = "http://www.addic7ed.com/serie/" + urlSuffix;
-
+            String episodeSubtitlesUrlString = getAddic7edUrlForEpisode(episode, lang);
             // Get release name and url
             Map<String, String> mapReleaseNameAndUrl = new HashMap<>();
-            URLConnection connection = new URL(episodeSubtitlesUrlString).openConnection();
-            connection.setRequestProperty("Referer", "http://www.addic7ed.com/");
-            connection.connect();
-            byte[] pageSource = IOUtils.toByteArray(connection);
-            if (pageSource.length == 0) {
+            String pageSource;
+            try {
+                pageSource = downloadResource(episodeSubtitlesUrlString, ADDIC7ED_URL).getContentAsString();
+            } catch (FileNotFoundException e) {
                 if (TRACE) {
                     throw new Exception("getEpisodeSubtitle(episode='" + episode + "') KO: url empty '" + episodeSubtitlesUrlString + "'");
                 } else {
-                    throw new CustomException("Release page '" + episodeSubtitlesUrlString + "' doesn't exist for file '" + episode.getFile().getName() + "'");
+                    throw new CustomException(
+                            "Release page '" + episodeSubtitlesUrlString + "' doesn't exist for file '" + episode.getFile().getName() + "' (lang='" + lang.toLanguageTag() + "'");
                 }
             }
-            Document doc = Jsoup.parse(new String(pageSource, connection.getContentEncoding() != null ? connection.getContentEncoding() : "UTF-8"));
+            Document doc = Jsoup.parse(pageSource);
             Elements selectTags = doc.select("#container95m");
             selectTags.forEach(element -> {
                 try {
@@ -191,25 +260,38 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
 
             String downloadUrlSuffix;
             if (!mapReleaseNameAndUrl.containsKey(episode.getReleaseName())) {
+                Entry<String, String> approximateReleaseEntry = null;
+                for (Entry<String, String> entry : mapReleaseNameAndUrl.entrySet()) {
+                    if (entry.getKey().contains(episode.getReleaseName())) {
+                        approximateReleaseEntry = entry;
+                        break;
+                    }
+                }
                 String releaseListStr = "[" + mapReleaseNameAndUrl.entrySet().stream().map(entry -> {
                     return entry.getKey();
                 }).collect(Collectors.joining(", ")) + "]";
 
-                // we get the first url
-                Map.Entry<String, String> firstRelease = mapReleaseNameAndUrl.entrySet().iterator().next();
-                downloadUrlSuffix = firstRelease.getValue();
-                if (TRACE) {
-                    log.warn("getEpisodeSubtitle(episode='" + episode + "') release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using '"
-                            + firstRelease.getKey() + "'");
+                if (approximateReleaseEntry == null) {
+                    // we get the first url
+                    Map.Entry<String, String> firstRelease = mapReleaseNameAndUrl.entrySet().iterator().next();
+                    downloadUrlSuffix = firstRelease.getValue();
+                    if (TRACE) {
+                        log.warn("getEpisodeSubtitle(episode='" + episode + "') release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '"
+                                + firstRelease.getKey() + "'");
+                    } else {
+                        log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '" + firstRelease.getKey() + "' ("
+                                + episode.getFile().getName() + ")");
+                    }
                 } else {
-                    log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using '" + firstRelease.getKey() + "' (" + episode.getFile().getName()
-                            + ")");
+                    downloadUrlSuffix = approximateReleaseEntry.getValue();
+                    log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using approximate one  '" + approximateReleaseEntry.getKey() + "' ("
+                            + episode.getFile().getName() + ")");
                 }
             } else {
                 downloadUrlSuffix = mapReleaseNameAndUrl.get(episode.getReleaseName());
             }
 
-            String downloadUrl = "http://www.addic7ed.com" + downloadUrlSuffix;
+            String downloadUrl = ADDIC7ED_URL + downloadUrlSuffix;
             downloadSubtitlePool.submit(() -> {
                 downloadSubtitle(episode, downloadUrl, lang, episodeSubtitlesUrlString);
             });
@@ -227,9 +309,12 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
         try {
             if (ADDIC7ED_SHOWNAME_LIST == null) {
                 ADDIC7ED_SHOWNAME_LIST = new ArrayList<>();
-                String pageSource = IOUtils.toString(new URL("http://www.addic7ed.com/"), "UTF-8");
+                String pageSource = downloadResource(ADDIC7ED_URL, null).getContentAsString();
                 Document doc = Jsoup.parse(pageSource);
                 Elements selectTags = doc.select("#qsShow");
+                if (selectTags.size() < 1) {
+                    throw new Error("Problem while downloading Addic7ed show list from url='" + ADDIC7ED_URL + "'");
+                }
                 selectTags.get(0).childNodes().forEach(node -> {
                     if (node instanceof Element && "option".equals(((Element) node).tagName())) {
 //                        String value = node.attr("value");

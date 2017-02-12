@@ -5,11 +5,13 @@ import java.util.List;
 
 public interface Addic7edDownloaderConstants {
 
-    public static final String VERSION = "1.0.0";
+    public static final String APPLICATION_NAME = "Addic7ed Downloader";
+    public static final String VERSION = "1.1.0";
 
     public final static boolean TRACE = false;
 
-    public final static List<String> FILE_EXTENSIONS = Arrays.asList("avi", "mkv");
+    public final static List<String> FILE_EXTENSIONS = Arrays.asList("avi", "mkv", "mp4");
+    public final static String ADDIC7ED_URL = "http://www.addic7ed.com/";
 
 //	public static final String SUFFIX_ORIGINAL_FILENAME_TOKEN = "%ori%";
 
