@@ -1,3 +1,10 @@
+TODO:
+
+DONE:
+
+1.1.1
+ - select release from comment section like '[...] Works with KILLERS'
+
 1.1.0
  - don't overwrite srt if already there
  - add log to know the origin (page and file name before)

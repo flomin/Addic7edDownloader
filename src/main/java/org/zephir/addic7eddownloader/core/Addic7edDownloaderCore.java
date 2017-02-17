@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -211,9 +210,14 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
 
     public void downloadEpisodeSubtitleUrl(Episode episode, Locale lang) throws Exception {
         try {
-            String episodeSubtitlesUrlString = getAddic7edUrlForEpisode(episode, lang);
             // Get release name and url
-            Map<String, String> mapReleaseNameAndUrl = new HashMap<>();
+            List<String> foundReleaseListFromAddic7ed = new ArrayList<>();
+            String firstReleaseNameFromAddic7ed = null;
+            String firstUrlSuffixFromAddic7ed = null;
+            String foundReleaseNameFromAddic7ed = null;
+            String foundUrlSuffixFromAddic7ed = null;
+
+            String episodeSubtitlesUrlString = getAddic7edUrlForEpisode(episode, lang);
             String pageSource;
             try {
                 pageSource = downloadResource(episodeSubtitlesUrlString, ADDIC7ED_URL).getContentAsString();
@@ -227,7 +231,7 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
             }
             Document doc = Jsoup.parse(pageSource);
             Elements selectTags = doc.select("#container95m");
-            selectTags.forEach(element -> {
+            for (Element element : selectTags) {
                 try {
                     String releaseName = null, downloadUrl = null;
                     Elements releaseNameElementList = element.select("td.NewsTitle");
@@ -240,7 +244,37 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
                         downloadUrl = downloadUrlElementList.get(0).attr("href");
                     }
                     if (releaseName != null && downloadUrl != null) {
-                        mapReleaseNameAndUrl.put(releaseName, downloadUrl);
+                        foundReleaseListFromAddic7ed.add(releaseName);
+                        if (firstReleaseNameFromAddic7ed == null) {
+                            // store first release
+                            firstReleaseNameFromAddic7ed = releaseName;
+                            firstUrlSuffixFromAddic7ed = downloadUrl;
+                        }
+                        if (releaseName.equalsIgnoreCase(episode.getReleaseName())) {
+                            // exact name
+                            foundReleaseNameFromAddic7ed = releaseName;
+                            foundUrlSuffixFromAddic7ed = downloadUrl;
+                            log.warn("Exact release '" + releaseName + "' found");
+                            break;
+                        } else if (releaseName.contains(episode.getReleaseName())) {
+                            // approximate name
+                            foundReleaseNameFromAddic7ed = releaseName;
+                            foundUrlSuffixFromAddic7ed = downloadUrl;
+                            log.warn("Approximate release '" + releaseName + "' found for episode release '" + episode.getReleaseName() + "'");
+                            break;
+                        } else {
+                            // get comment section
+                            Elements commentElementList = element.select("td.newsDate");
+                            if (!commentElementList.isEmpty()) {
+                                String commentContent = commentElementList.get(0).ownText();
+                                if (commentContent.contains(episode.getReleaseName())) {
+                                    foundReleaseNameFromAddic7ed = releaseName;
+                                    foundUrlSuffixFromAddic7ed = downloadUrl;
+                                    log.warn("Working release '" + releaseName + "' found for episode release '" + episode.getReleaseName() + "' (from comment='" + commentContent + "')");
+                                    break;
+                                }
+                            }
+                        }
                     }
                     if (TRACE) {
                         log.debug("getEpisodeSubtitle(...) found releaseName='" + releaseName + "', downloadUrl='" + downloadUrl + "'");
@@ -248,9 +282,9 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
                 } catch (Exception e) {
                     log.error("getEpisodeSubtitle(episode='" + episode + "') KO with releaseName/downloadUrl parsing: " + e, e);
                 }
-            });
+            } ;
 
-            if (mapReleaseNameAndUrl.isEmpty()) {
+            if (foundReleaseListFromAddic7ed.isEmpty()) {
                 if (TRACE) {
                     throw new CustomException("No release found on url '" + episodeSubtitlesUrlString + "' for episode='" + episode + "'");
                 } else {
@@ -258,40 +292,20 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
                 }
             }
 
-            String downloadUrlSuffix;
-            if (!mapReleaseNameAndUrl.containsKey(episode.getReleaseName())) {
-                Entry<String, String> approximateReleaseEntry = null;
-                for (Entry<String, String> entry : mapReleaseNameAndUrl.entrySet()) {
-                    if (entry.getKey().contains(episode.getReleaseName())) {
-                        approximateReleaseEntry = entry;
-                        break;
-                    }
-                }
-                String releaseListStr = "[" + mapReleaseNameAndUrl.entrySet().stream().map(entry -> {
-                    return entry.getKey();
-                }).collect(Collectors.joining(", ")) + "]";
-
-                if (approximateReleaseEntry == null) {
-                    // we get the first url
-                    Map.Entry<String, String> firstRelease = mapReleaseNameAndUrl.entrySet().iterator().next();
-                    downloadUrlSuffix = firstRelease.getValue();
-                    if (TRACE) {
-                        log.warn("getEpisodeSubtitle(episode='" + episode + "') release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '"
-                                + firstRelease.getKey() + "'");
-                    } else {
-                        log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '" + firstRelease.getKey() + "' ("
-                                + episode.getFile().getName() + ")");
-                    }
+            if (foundReleaseNameFromAddic7ed == null) {
+                String releaseListStr = "[" + StringUtils.join(foundReleaseListFromAddic7ed, ", ") + "]";
+                // we get the first url
+                foundUrlSuffixFromAddic7ed = firstUrlSuffixFromAddic7ed;
+                if (TRACE) {
+                    log.warn("getEpisodeSubtitle(episode='" + episode + "') release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '"
+                            + firstReleaseNameFromAddic7ed + "'");
                 } else {
-                    downloadUrlSuffix = approximateReleaseEntry.getValue();
-                    log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using approximate one  '" + approximateReleaseEntry.getKey() + "' ("
+                    log.warn("Release '" + episode.getReleaseName() + "' not found among " + releaseListStr + " -> using first one '" + firstReleaseNameFromAddic7ed + "' ("
                             + episode.getFile().getName() + ")");
                 }
-            } else {
-                downloadUrlSuffix = mapReleaseNameAndUrl.get(episode.getReleaseName());
             }
 
-            String downloadUrl = ADDIC7ED_URL + downloadUrlSuffix;
+            String downloadUrl = ADDIC7ED_URL + foundUrlSuffixFromAddic7ed;
             downloadSubtitlePool.submit(() -> {
                 downloadSubtitle(episode, downloadUrl, lang, episodeSubtitlesUrlString);
             });

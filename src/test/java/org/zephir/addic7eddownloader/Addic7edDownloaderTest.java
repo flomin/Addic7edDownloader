@@ -32,7 +32,7 @@ public class Addic7edDownloaderTest {
 
     @Before
     public void setUp() throws Exception {
-//        createFakeEpisodeList(new File("E:\\Vidz\\Séries"), SOURCE_FOLDER);
+//        createFakeEpisodeList(new File("E:\\Vidz\\Séries\\You Me Her"), SOURCE_FOLDER);
 
         FileUtils.deleteDirectory(WORK_FOLDER);
         FileUtils.copyDirectory(SOURCE_FOLDER, WORK_FOLDER);
