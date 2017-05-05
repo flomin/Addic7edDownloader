@@ -2,6 +2,13 @@ TODO:
 
 DONE:
 
+1.1.3
+ - properties file save and load restored
+ - working with release like [GWT]
+
+1.1.2
+ - Set User-Agent to Mozilla to avoid 302 errors
+
 1.1.1
  - select release from comment section like '[...] Works with KILLERS'
 

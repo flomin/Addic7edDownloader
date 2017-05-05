@@ -1,9 +1,13 @@
 package org.zephir.addic7eddownloader.view;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 
 import org.apache.log4j.Logger;
 import org.eclipse.swt.SWT;
@@ -54,36 +58,36 @@ public class Addic7edDownloaderForm implements Addic7edDownloaderConstants {
         });
     }
 
-//	private void loadPreferences() {
-//		try {
-//			if (new File("PhotoRenamer.properties").exists()) {
-//				Properties props = new Properties();
-//				FileInputStream in = new FileInputStream("PhotoRenamer.properties");
-//				props.load(in);
-//				in.close();
-//
-//				String inputFolder = props.getProperty("inputFolder");
-//				if (inputFolder != null) {
-//					textInputFolder.setText(inputFolder);
-//				}
-//			}
-//		} catch (IOException e) {
-//			log.error("loadPreferences() KO: " + e, e);
-//		}
-//	}
-//
-//	private void savePreferences() {
-//		try {
-//			Properties props = new Properties();
-//			props.setProperty("inputFolder", textInputFolder.getText());
-//			FileOutputStream out = new FileOutputStream("PhotoRenamer.properties");
-//			props.store(out, "---No Comment---");
-//			out.close();
-//
-//		} catch (IOException e) {
-//			log.error("savePreferences() KO: " + e, e);
-//		}
-//	}
+	private void loadPreferences() {
+		try {
+			if (new File(PROPERTIES_FILE).exists()) {
+				Properties props = new Properties();
+				FileInputStream in = new FileInputStream(PROPERTIES_FILE);
+				props.load(in);
+				in.close();
+
+				String inputFolder = props.getProperty("inputFolder");
+				if (inputFolder != null) {
+					textInputFolder.setText(inputFolder);
+				}
+			}
+		} catch (IOException e) {
+			log.error("loadPreferences() KO: " + e, e);
+		}
+	}
+
+	private void savePreferences() {
+		try {
+			Properties props = new Properties();
+			props.setProperty("inputFolder", textInputFolder.getText());
+			FileOutputStream out = new FileOutputStream(PROPERTIES_FILE);
+			props.store(out, "---No Comment---");
+			out.close();
+
+		} catch (IOException e) {
+			log.error("savePreferences() KO: " + e, e);
+		}
+	}
 
     private void createSShell() {
         sShell = new Shell((Display) SWTLoader.getDisplay(), SWT.CLOSE | SWT.TITLE | SWT.MIN | SWT.MAX);
@@ -93,7 +97,7 @@ public class Addic7edDownloaderForm implements Addic7edDownloaderConstants {
         sShell.addShellListener(new org.eclipse.swt.events.ShellAdapter() {
             @Override
             public void shellClosed(final org.eclipse.swt.events.ShellEvent e) {
-//				savePreferences();
+				savePreferences();
                 ConsoleFormAppender.closeAll();
             }
         });
@@ -144,7 +148,7 @@ public class Addic7edDownloaderForm implements Addic7edDownloaderConstants {
 
         y += (FORM_LINE_HEIGHT + FORM_LINE_SPACE) * 2;
         sShell.setSize(new Point(600, 100));
-//		loadPreferences();
+		loadPreferences();
     }
 
 //	private void openHelpDialog(final String title, final String text) {

@@ -182,6 +182,7 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
             if (StringUtils.isNotEmpty(refererUrl)) {
                 connection.setRequestProperty("Referer", refererUrl);
             }
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36");
             connection.connect();
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -305,6 +306,7 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
                 }
             }
 
+            foundUrlSuffixFromAddic7ed = StringUtils.removeStart(foundUrlSuffixFromAddic7ed, "/");
             String downloadUrl = ADDIC7ED_URL + foundUrlSuffixFromAddic7ed;
             downloadSubtitlePool.submit(() -> {
                 downloadSubtitle(episode, downloadUrl, lang, episodeSubtitlesUrlString);
@@ -425,7 +427,12 @@ public class Addic7edDownloaderCore implements Addic7edDownloaderConstants {
             String episodeNbStr = matcher.group("EpisodeA") != null ? matcher.group("EpisodeA") : (matcher.group("EpisodeB") != null ? matcher.group("EpisodeB") : null);
             int episodeNb = Integer.parseInt(episodeNbStr);
             episode.setEpisodeNb(episodeNb);
-            String release = StringUtils.substringBefore(matcher.group("Release"), "[");
+            String releaseGroup = matcher.group("Release");
+            String release = StringUtils.substringBefore(releaseGroup, "[");
+            if (StringUtils.isBlank(release)) {
+                // release starts with '[', remove them
+                release = StringUtils.substringBetween(releaseGroup, "[", "]");
+            }
             episode.setReleaseName(release);
             episodeList.add(episode);
             if (TRACE) {
